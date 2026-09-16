@@ -1,1 +1,18 @@
-this is new file
+Phase 1: Data Pipeline (Colab, free tier)
+Load PubMedQA (pqa_unlabeled + pqa_labeled) via datasets.
+Build your fixed splits: G0 training pool, human-anchor reserve pool, held-out gold evaluation set (the 1,000 labeled rows).
+Write and test the prompt-formatting function (context + question → long_answer).
+Set up and test the SciSpacy biomedical entity extractor on a few samples — confirm it correctly tags diseases/drugs.
+Phase 2: Baseline Models (cloud GPU — RunPod/Vast.ai)
+Set up QLoRA configs (4-bit, LoRA rank/alpha, target modules) for each model family.
+Fine-tune Generation 0 for each of your chosen models on the human baseline pool.
+Run G0 through your eval set: record baseline perplexity, BLEU/entity-overlap (whichever applies), and entity-frequency counts.
+Phase 3: Recursive Loop Matrix
+For each model family, run the generation loop across your experimental tracks (e.g., 0/5/10/20% human-data anchoring × filtered/unfiltered) for 3–4 generations.
+At each generation: generate synthetic answers → apply filtering strategy → mix with anchor data → fine-tune next generation → evaluate against the frozen gold set.
+Log everything per generation: perplexity, entity retention, any qualitative failure examples (useful for the paper's discussion section).
+Phase 4: Analysis & Writing
+Aggregate results into comparison plots (perplexity vs. generation, entity-loss curves per model family/track).
+Identify your key finding — which track/model combo degrades slowest, and why (this is your paper's contribution).
+Draft: Abstract → Intro/Related Work (with verified citations) → Method → Results → Discussion/Limitations.
+Get feedback from your collaborator/advisor before finalizing.
