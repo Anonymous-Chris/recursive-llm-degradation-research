@@ -1,0 +1,10 @@
+datasets
+pandas
+numpy
+scispacy
+spacy==3.7.5
+transformers
+torch
+peft
+accelerate
+bitsandbytes
