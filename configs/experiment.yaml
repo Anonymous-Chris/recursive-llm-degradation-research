@@ -4,7 +4,7 @@ ner_model: HFpf/pubmedbert-bc5cdr-ner
 embedding_model: sentence-transformers/all-MiniLM-L6-v2
 output_root: results
 data_root: data
-seeds: [42, 123]
+seeds: [42, 123, 456]
 generations: 3                  # produces G0, G1, G2, G3
 g0_base_size: 5000
 gold_eval_size: 1000
