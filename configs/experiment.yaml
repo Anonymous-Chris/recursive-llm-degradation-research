@@ -1,12 +1,12 @@
 study_name: pubmedqa_recursive_biomedical_qa
-model_name: Qwen/Qwen2.5-0.5B
+model_name: Qwen/Qwen2.5-3B
 ner_model: HFpf/pubmedbert-bc5cdr-ner
 embedding_model: sentence-transformers/all-MiniLM-L6-v2
 output_root: results
 data_root: data
-seeds: [42, 123, 456]
+seeds: [42, 123]
 generations: 3                  # produces G0, G1, G2, G3
-g0_base_size: 500
+g0_base_size: 5000
 gold_eval_size: 1000
 anchor_ratio: 0.10
 init_mode: previous_adapter     # previous_adapter | base
