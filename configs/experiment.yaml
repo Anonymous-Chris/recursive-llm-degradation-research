@@ -1,0 +1,37 @@
+study_name: pubmedqa_recursive_biomedical_qa
+model_name: Qwen/Qwen2.5-0.5B
+ner_model: HFpf/pubmedbert-bc5cdr-ner
+embedding_model: sentence-transformers/all-MiniLM-L6-v2
+output_root: results
+data_root: data
+seeds: [42, 123, 456]
+generations: 3                  # produces G0, G1, G2, G3
+g0_base_size: 500
+gold_eval_size: 1000
+anchor_ratio: 0.10
+init_mode: previous_adapter     # previous_adapter | base
+training:
+  epochs: 3
+  learning_rate: 0.0002
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
+  max_seq_length: 1024
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+generation:
+  batch_size: 4
+  max_new_tokens: 256
+  do_sample: false
+  temperature: null
+  top_p: null
+  repetition_penalty: 1.15
+  no_repeat_ngram_size: 3
+evaluation:
+  batch_size: 8
+  max_length: 1024
+  compute_bertscore: true
+  compute_embedding_cosine: true
+  compute_frozen_g0_ppl: true
+  decision_mapper: none         # none | terminal_keyword
