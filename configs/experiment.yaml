@@ -35,6 +35,9 @@ generation:
   repetition_penalty: 1.15
   no_repeat_ngram_size: 3
 evaluation:
+  perplexity_batch_size: 1      # increase after measuring GPU memory, especially for 3B
+  bertscore_batch_size: 32
+  embedding_batch_size: 32
   batch_size: 8
   max_length: 1024
   compute_bertscore: true

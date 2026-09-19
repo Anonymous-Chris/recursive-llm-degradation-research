@@ -80,51 +80,68 @@ def entity_values(reference: set[str], predicted: set[str], context: set[str], p
 
 def lexical_values(reference: str, predicted: str) -> dict[str, float]:
     scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
-    return {
+    values = {
         "bleu1": sentence_bleu(predicted, [reference], smooth_method="exp", tokenize="13a").precisions[0] / 100,
         "bleu4": sentence_bleu(predicted, [reference], smooth_method="exp", tokenize="13a").score / 100,
         "rougeL": scorer.score(reference, predicted)["rougeL"].fmeasure,
         "chrf": sentence_chrf(predicted, [reference]).score / 100,
     }
+    return values
 
 
 @torch.inference_mode()
-def conditional_ppl(frame: pd.DataFrame, model_name: str, adapter: Path | None, max_length: int) -> list[float]:
-    """PPL of answer tokens conditional on the question/context prompt."""
+def conditional_ppl(frame: pd.DataFrame, model_name: str, adapter: Path | None,
+                    max_length: int, batch_size: int = 1) -> list[float]:
+    """Per-answer conditional PPL with batched inference and masked padding."""
     from peft import PeftModel
+    if batch_size < 1:
+        raise ValueError("Perplexity batch_size must be positive")
     tokenizer = tokenizer_for(model_name)
     model = base_model(model_name)
     if adapter:
         model = PeftModel.from_pretrained(model, adapter)
     model.eval()
+    model.config.use_cache = False
     device = next(model.parameters()).device
     values = []
-    for row in frame.itertuples(index=False):
-        prefix = prompt(row.question, row.context)
-        pids = tokenizer(prefix, add_special_tokens=False)["input_ids"]
-        aids = tokenizer(str(row.predicted_answer) + tokenizer.eos_token, add_special_tokens=False)["input_ids"]
-        ids = (pids + aids)[-max_length:]
-        retained_prefix = max(0, len(pids) - max(0, len(pids) + len(aids) - max_length))
-        labels = [-100] * retained_prefix + ids[retained_prefix:]
-        if not any(label != -100 for label in labels):
-            values.append(float("nan")); continue
-        tensor = torch.tensor([ids], device=device)
-        output = model(input_ids=tensor, attention_mask=torch.ones_like(tensor), labels=torch.tensor([labels], device=device))
-        values.append(float(math.exp(min(output.loss.item(), 20))))
+    for start in range(0, len(frame), batch_size):
+        inputs, targets = [], []
+        for row in frame.iloc[start:start + batch_size].itertuples(index=False):
+            prefix = prompt(row.question, row.context)
+            pids = tokenizer(prefix, add_special_tokens=False)["input_ids"]
+            aids = tokenizer(str(row.predicted_answer) + tokenizer.eos_token, add_special_tokens=False)["input_ids"]
+            ids = (pids + aids)[-max_length:]
+            retained_prefix = max(0, len(pids) - max(0, len(pids) + len(aids) - max_length))
+            inputs.append({"input_ids": ids})
+            targets.append([-100] * retained_prefix + ids[retained_prefix:])
+        batch = tokenizer.pad(inputs, padding=True, return_tensors="pt").to(device)
+        labels = torch.full_like(batch.input_ids, -100)
+        for i, target in enumerate(targets):
+            labels[i, -len(target):] = torch.tensor(target, device=device)
+        logits = model(**batch).logits[:, :-1, :].float()
+        shifted = labels[:, 1:]
+        losses = torch.nn.functional.cross_entropy(
+            logits.reshape(-1, logits.shape[-1]), shifted.reshape(-1),
+            reduction="none", ignore_index=-100,
+        ).reshape(shifted.shape)
+        for loss, valid in zip(losses, shifted != -100):
+            mean = loss[valid].mean().item() if valid.any() else float("nan")
+            values.append(math.exp(min(mean, 20)))
     del model
-    if torch.cuda.is_available(): torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     return values
 
 
 def optional_semantic(frame: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     if cfg["evaluation"].get("compute_bertscore"):
         from bert_score import score
-        _, _, f1 = score(frame.predicted_answer.tolist(), frame.long_answer.tolist(), lang="en", verbose=True)
+        _, _, f1 = score(frame.predicted_answer.tolist(), frame.long_answer.tolist(), lang="en", verbose=True, batch_size=cfg["evaluation"].get("bertscore_batch_size", 32))
         frame["bertscore_f1"] = f1.cpu().numpy()
     if cfg["evaluation"].get("compute_embedding_cosine"):
         from sentence_transformers import SentenceTransformer
         encoder = SentenceTransformer(cfg["embedding_model"])
-        ref = encoder.encode(frame.long_answer.tolist(), normalize_embeddings=True, show_progress_bar=True)
-        pred = encoder.encode(frame.predicted_answer.tolist(), normalize_embeddings=True, show_progress_bar=True)
+        ref = encoder.encode(frame.long_answer.tolist(), normalize_embeddings=True, show_progress_bar=True, batch_size=cfg["evaluation"].get("embedding_batch_size", 32))
+        pred = encoder.encode(frame.predicted_answer.tolist(), normalize_embeddings=True, show_progress_bar=True, batch_size=cfg["evaluation"].get("embedding_batch_size", 32))
         frame["embedding_cosine"] = (ref * pred).sum(axis=1)
     return frame

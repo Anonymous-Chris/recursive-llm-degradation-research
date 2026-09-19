@@ -41,10 +41,14 @@ def main() -> None:
             if cfg["evaluation"].get("decision_mapper") == "terminal_keyword":
                 values["decision_preserved_heuristic"] = float(decision_from_terminal(row.predicted_answer) == str(row.final_decision).lower())
             rows.append(values)
-        item = optional_semantic(pd.DataFrame(rows), cfg)
-        item["base_conditional_ppl"] = conditional_ppl(pred, cfg["model_name"], None, cfg["evaluation"]["max_length"])
+        item = pd.DataFrame(rows)
+        # Semantic scoring needs the source answers; keep output columns unchanged.
+        item["long_answer"] = pred.long_answer.fillna("")
+        item["predicted_answer"] = pred.predicted_answer.fillna("")
+        item = optional_semantic(item, cfg).drop(columns=["long_answer", "predicted_answer"])
+        item["base_conditional_ppl"] = conditional_ppl(pred, cfg["model_name"], None, cfg["evaluation"]["max_length"], cfg["evaluation"].get("perplexity_batch_size", 1))
         if cfg["evaluation"].get("compute_frozen_g0_ppl"):
-            item["frozen_g0_conditional_ppl"] = conditional_ppl(pred, cfg["model_name"], run_dir / "g0" / "adapter", cfg["evaluation"]["max_length"])
+            item["frozen_g0_conditional_ppl"] = conditional_ppl(pred, cfg["model_name"], run_dir / "g0" / "adapter", cfg["evaluation"]["max_length"], cfg["evaluation"].get("perplexity_batch_size", 1))
         item.to_csv(run_dir / f"g{generation}_per_example_metrics.csv", index=False)
         summary = item.drop(columns=["pubid"]).mean(numeric_only=True).to_dict()
         summary.update({"generation": f"G{generation}", "n": len(item), "prediction_file": path.name,
