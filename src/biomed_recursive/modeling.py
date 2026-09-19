@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pandas as pd
 import torch
-from peft import LoraConfig, PeftModel, TaskType, get_peft_model
+from peft import LoraConfig, PeftModel, TaskType, get_peft_model, prepare_model_for_kbit_training
 from torch.utils.data import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorForSeq2Seq, Trainer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForSeq2Seq, Trainer, TrainingArguments
 
 from .common import prompt
 
@@ -51,7 +51,24 @@ def tokenizer_for(model_name: str):
     return tokenizer
 
 
-def base_model(model_name: str):
+def base_model(model_name: str, quantization: dict | None = None):
+    quantization = quantization or {}
+    if quantization.get("load_in_4bit", False) and torch.cuda.is_available():
+        compute_dtype = quantization.get("compute_dtype", "float16")
+        if compute_dtype not in ("float16", "bfloat16", "float32"):
+            raise ValueError(f"Unsupported quantization compute_dtype: {compute_dtype}")
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type=quantization.get("quant_type", "nf4"),
+            bnb_4bit_compute_dtype=getattr(torch, compute_dtype),
+            bnb_4bit_use_double_quant=quantization.get("use_double_quant", True),
+        )
+        return AutoModelForCausalLM.from_pretrained(
+            model_name, quantization_config=bnb_config,
+            device_map={"": torch.cuda.current_device()}, trust_remote_code=True,
+        )
+    if quantization.get("load_in_4bit", False):
+        print("CUDA unavailable: using non-quantized LoRA weights.")
     dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
     return AutoModelForCausalLM.from_pretrained(
         model_name, torch_dtype=dtype if torch.cuda.is_available() else torch.float32,
@@ -62,8 +79,16 @@ def base_model(model_name: str):
 def train_adapter(frame: pd.DataFrame, cfg: dict, output_dir: Path, init_adapter: Path | None = None, *, seed: int = 42):
     tokenizer = tokenizer_for(cfg["model_name"])
     tokenizer.padding_side = "right"
-    model = base_model(cfg["model_name"])
+    model = base_model(cfg["model_name"], cfg.get("quantization"))
     train_cfg = cfg["training"]
+    checkpointing = bool(train_cfg.get("gradient_checkpointing", False) and torch.cuda.is_available())
+    # Non-reentrant checkpointing also supports frozen base-model inputs.
+    checkpoint_kwargs = {"use_reentrant": False}
+    if getattr(model, "is_loaded_in_4bit", False):
+        model = prepare_model_for_kbit_training(
+            model, use_gradient_checkpointing=checkpointing,
+            gradient_checkpointing_kwargs=checkpoint_kwargs,
+        )
     if init_adapter:
         model = PeftModel.from_pretrained(model, init_adapter, is_trainable=True)
     else:
@@ -80,6 +105,8 @@ def train_adapter(frame: pd.DataFrame, cfg: dict, output_dir: Path, init_adapter
         gradient_accumulation_steps=train_cfg["gradient_accumulation_steps"], logging_steps=5,
         save_strategy="no", report_to="none", remove_unused_columns=False,
         seed=seed, data_seed=seed,
+        gradient_checkpointing=checkpointing,
+        gradient_checkpointing_kwargs=checkpoint_kwargs if checkpointing else None,
         fp16=torch.cuda.is_available() and not torch.cuda.is_bf16_supported(),
         bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
     )
@@ -97,7 +124,7 @@ def train_adapter(frame: pd.DataFrame, cfg: dict, output_dir: Path, init_adapter
 @torch.inference_mode()
 def generate(frame: pd.DataFrame, cfg: dict, adapter_dir: Path, answer_column="predicted_answer") -> pd.DataFrame:
     tokenizer = tokenizer_for(cfg["model_name"])
-    model = PeftModel.from_pretrained(base_model(cfg["model_name"]), adapter_dir)
+    model = PeftModel.from_pretrained(base_model(cfg["model_name"], cfg.get("quantization")), adapter_dir)
     model.eval()
     rows, gen = [], cfg["generation"]
     device = next(model.parameters()).device

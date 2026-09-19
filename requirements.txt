@@ -14,3 +14,4 @@ sentence-transformers>=3.0
 torch>=2.4
 transformers>=4.46
 trl>=0.12
+bitsandbytes>=0.43

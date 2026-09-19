@@ -10,11 +10,17 @@ g0_base_size: 500
 gold_eval_size: 1000
 anchor_ratio: 0.10
 init_mode: previous_adapter     # previous_adapter | base
+quantization:                  # CUDA only; CPU/MPS use non-quantized weights
+  load_in_4bit: true
+  quant_type: nf4
+  compute_dtype: float16
+  use_double_quant: true
 training:
   epochs: 3
   learning_rate: 0.0002
   per_device_train_batch_size: 16
   gradient_accumulation_steps: 1
+  gradient_checkpointing: true  # enabled on CUDA; trades compute for lower memory
   max_seq_length: 1024
   lora_r: 16
   lora_alpha: 32
