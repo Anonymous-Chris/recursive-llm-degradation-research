@@ -34,7 +34,7 @@ def main() -> None:
     # PQA-L has 1,000 expert-labelled rows. It is written once and never used
     # as input to run_chain. If a human training CSV was already supplied, do
     # not overwrite it with a guessed substitute.
-    labeled = to_frame(load_dataset("pubmed_qa", "pqa_labeled", split="train"))
+    labeled = to_frame(load_dataset("qiaojin/PubMedQA", "pqa_labeled", split="train"))
     if len(labeled) < cfg["gold_eval_size"]:
         raise ValueError("The labelled PubMedQA split is smaller than gold_eval_size.")
     gold = labeled.sample(n=cfg["gold_eval_size"], random_state=cfg["seeds"][0]).reset_index(drop=True)
@@ -42,7 +42,7 @@ def main() -> None:
     if supplied.exists():
         human = pd.read_csv(supplied, dtype={"pubid": str})
     else:
-        unlabeled = to_frame(load_dataset("pubmed_qa", "pqa_unlabeled", split="train"))
+        unlabeled = to_frame(load_dataset("qiaojin/PubMedQA", "pqa_unlabeled", split="train"))
         unlabeled = unlabeled[~unlabeled.pubid.astype(str).isin(gold.pubid.astype(str))]
         human = unlabeled.sample(n=cfg["g0_base_size"], random_state=cfg["seeds"][0]).reset_index(drop=True)
     human, gold = normalize_table(human), normalize_table(gold)
@@ -56,7 +56,7 @@ def main() -> None:
     human.to_csv(root / "human_train.csv", index=False)
     dump_json(root / "split_metadata.json", {
         "gold_rows": len(gold), "human_rows": len(human), "gold_pubids": gold.pubid.tolist(),
-        "sampling_seed": cfg["seeds"][0], "source": "pubmed_qa",
+        "sampling_seed": cfg["seeds"][0], "source": "qiaojin/PubMedQA",
     })
     print(f"Wrote {root / 'gold_eval.csv'} and {root / 'human_train.csv'}")
 
