@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 from datasets import load_dataset
 
-from .common import context_to_text, dump_json, load_config, set_seed
+from .common import context_to_text, dump_json, load_config, set_seed, normalize_table, validate_splits
 
 
 def to_frame(dataset) -> pd.DataFrame:
@@ -40,13 +40,16 @@ def main() -> None:
     gold = labeled.sample(n=cfg["gold_eval_size"], random_state=cfg["seeds"][0]).reset_index(drop=True)
     supplied = root / "human_train.csv"
     if supplied.exists():
-        human = pd.read_csv(supplied)
+        human = pd.read_csv(supplied, dtype={"pubid": str})
     else:
         unlabeled = to_frame(load_dataset("pubmed_qa", "pqa_unlabeled", split="train"))
+        unlabeled = unlabeled[~unlabeled.pubid.astype(str).isin(gold.pubid.astype(str))]
         human = unlabeled.sample(n=cfg["g0_base_size"], random_state=cfg["seeds"][0]).reset_index(drop=True)
+    human, gold = normalize_table(human), normalize_table(gold)
+    validate_splits(human, gold)
     if len(human) != cfg["g0_base_size"] or (human.long_answer.fillna("").astype(str).str.strip() == "").any():
         raise ValueError(
-            "G0 requires exactly 500 non-empty long answers. Provide data/human_train.csv with "
+            f"G0 requires exactly {cfg['g0_base_size']} non-empty long answers. Provide data/human_train.csv with "
             "pubid, question, context, long_answer, final_decision if using a custom human split."
         )
     gold.to_csv(root / "gold_eval.csv", index=False)

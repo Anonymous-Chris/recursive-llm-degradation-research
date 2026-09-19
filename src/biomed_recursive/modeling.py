@@ -11,19 +11,30 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorForSeq
 from .common import prompt
 
 
+def bounded_tokens(tokenizer, question, context, max_length, answer=None):
+    # Preserve the existing prompt format, trimming only context first.
+    before, after = prompt(question, "").split("Context:\n", 1)
+    encode = lambda text: tokenizer(text, add_special_tokens=False)["input_ids"]
+    head, tail = encode(before + "Context:\n"), encode(after)
+    available = max_length - len(head) - len(tail)
+    if available < (2 if answer is not None else 0):
+        raise ValueError("Question and prompt markers exceed the token budget")
+    target = []
+    if answer is not None:
+        target = encode(answer)[:available - 1] + [tokenizer.eos_token_id]
+    context_ids = encode(str(context))[:available - len(target)]
+    return head + context_ids + tail, target
+
+
 class SupervisedDataset(Dataset):
     def __init__(self, frame: pd.DataFrame, tokenizer, max_length: int):
         self.items = []
         for row in frame.itertuples(index=False):
-            prefix = prompt(row.question, row.context)
-            answer = str(row.long_answer).strip() + tokenizer.eos_token
-            prefix_ids = tokenizer(prefix, add_special_tokens=False)["input_ids"]
-            answer_ids = tokenizer(answer, add_special_tokens=False)["input_ids"]
-            ids = (prefix_ids + answer_ids)[-max_length:]
-            # Retain target tokens only; an overlong prefix leaves at least the
-            # last answer tokens trainable instead of accidentally training it.
-            prompt_len = max(0, len(prefix_ids) - max(0, len(prefix_ids) + len(answer_ids) - max_length))
-            labels = [-100] * min(prompt_len, len(ids)) + ids[min(prompt_len, len(ids)):]
+            prefix_ids, answer_ids = bounded_tokens(
+                tokenizer, row.question, row.context, max_length, str(row.long_answer).strip()
+            )
+            ids = prefix_ids + answer_ids
+            labels = [-100] * len(prefix_ids) + answer_ids
             self.items.append({"input_ids": ids, "attention_mask": [1] * len(ids), "labels": labels})
 
     def __len__(self):
@@ -48,8 +59,9 @@ def base_model(model_name: str):
     )
 
 
-def train_adapter(frame: pd.DataFrame, cfg: dict, output_dir: Path, init_adapter: Path | None = None):
+def train_adapter(frame: pd.DataFrame, cfg: dict, output_dir: Path, init_adapter: Path | None = None, *, seed: int = 42):
     tokenizer = tokenizer_for(cfg["model_name"])
+    tokenizer.padding_side = "right"
     model = base_model(cfg["model_name"])
     train_cfg = cfg["training"]
     if init_adapter:
@@ -67,6 +79,7 @@ def train_adapter(frame: pd.DataFrame, cfg: dict, output_dir: Path, init_adapter
         learning_rate=train_cfg["learning_rate"], per_device_train_batch_size=train_cfg["per_device_train_batch_size"],
         gradient_accumulation_steps=train_cfg["gradient_accumulation_steps"], logging_steps=5,
         save_strategy="no", report_to="none", remove_unused_columns=False,
+        seed=seed, data_seed=seed,
         fp16=torch.cuda.is_available() and not torch.cuda.is_bf16_supported(),
         bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
     )
@@ -90,9 +103,10 @@ def generate(frame: pd.DataFrame, cfg: dict, adapter_dir: Path, answer_column="p
     device = next(model.parameters()).device
     for start in range(0, len(frame), gen["batch_size"]):
         batch = frame.iloc[start:start + gen["batch_size"]]
-        prompts = [prompt(r.question, r.context) for r in batch.itertuples(index=False)]
-        encoded = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True,
-                            max_length=cfg["training"]["max_seq_length"]).to(device)
+        inputs = [{"input_ids": bounded_tokens(
+            tokenizer, r.question, r.context, cfg["training"]["max_seq_length"]
+        )[0]} for r in batch.itertuples(index=False)]
+        encoded = tokenizer.pad(inputs, return_tensors="pt", padding=True).to(device)
         kwargs = dict(max_new_tokens=gen["max_new_tokens"], do_sample=gen["do_sample"],
                       repetition_penalty=gen["repetition_penalty"], no_repeat_ngram_size=gen["no_repeat_ngram_size"],
                       pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)

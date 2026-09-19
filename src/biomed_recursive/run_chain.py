@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .common import dump_json, load_config, normalize_table, set_seed
+from .common import dump_json, load_config, normalize_table, set_seed, validate_splits
 from .modeling import generate, train_adapter
 
 
@@ -44,9 +44,10 @@ def main() -> None:
     cfg = load_config(args.config)
     set_seed(args.seed)
     data_root = Path(cfg["data_root"])
-    human, gold = normalize_table(pd.read_csv(data_root / "human_train.csv")), normalize_table(pd.read_csv(data_root / "gold_eval.csv"))
+    human, gold = normalize_table(pd.read_csv(data_root / "human_train.csv", dtype={"pubid": str})), normalize_table(pd.read_csv(data_root / "gold_eval.csv", dtype={"pubid": str}))
     if len(human) != cfg["g0_base_size"] or len(gold) != cfg["gold_eval_size"]:
         raise ValueError("Prepared CSV row counts do not match the declared experimental contract.")
+    validate_splits(human, gold)
     run_dir = Path(cfg["output_root"]) / args.condition / f"seed_{args.seed}"
     run_dir.mkdir(parents=True, exist_ok=True)
     prior_synthetic, previous_adapter = None, None
@@ -57,7 +58,7 @@ def main() -> None:
         training, provenance = train_input(args.condition, generation, human, prior_synthetic, cfg["anchor_ratio"])
         training.to_csv(stage / "training_input.csv", index=False)
         init_adapter = previous_adapter if (generation and cfg["init_mode"] == "previous_adapter") else None
-        adapter = train_adapter(training, cfg, stage, init_adapter)
+        adapter = train_adapter(training, cfg, stage, init_adapter, seed=args.seed)
         predictions = generate(gold, cfg, adapter, "predicted_answer")
         predictions.to_csv(run_dir / f"g{generation}_predictions.csv", index=False)
         item = {"generation": generation, "training_provenance": provenance, "init_adapter": str(init_adapter) if init_adapter else "base", "prediction_rows": len(predictions)}

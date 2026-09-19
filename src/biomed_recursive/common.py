@@ -66,3 +66,12 @@ def normalize_table(frame: pd.DataFrame) -> pd.DataFrame:
     if "final_decision" not in result:
         result["final_decision"] = ""
     return result
+
+
+def validate_splits(human: pd.DataFrame, gold: pd.DataFrame) -> None:
+    for name, frame in (("human", human), ("gold", gold)):
+        ids = frame.pubid.astype(str).str.strip()
+        if ids.eq("").any() or ids.duplicated().any():
+            raise ValueError(f"{name} pubids must be non-empty and unique")
+    if set(human.pubid.astype(str)) & set(gold.pubid.astype(str)):
+        raise ValueError("Human training and gold evaluation pubids overlap")
