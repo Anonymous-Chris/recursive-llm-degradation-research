@@ -1,0 +1,17 @@
+condition,entity_type,generation,micro_f1
+Human_Control,chemical,G0,0.20978294971620887
+Human_Control,disease,G0,0.2326765313402966
+Recursive,chemical,G0,0.20978294971620887
+Recursive,disease,G0,0.2326765313402966
+Human_Control,chemical,G1,0.2377725099278709
+Human_Control,disease,G1,0.23399288375266597
+Recursive,chemical,G1,0.21925139905044716
+Recursive,disease,G1,0.19135164090153167
+Human_Control,chemical,G2,0.23973191188406895
+Human_Control,disease,G2,0.23724342319231423
+Recursive,chemical,G2,0.16725860339869564
+Recursive,disease,G2,0.14806480648064804
+Human_Control,chemical,G3,0.2379386795549697
+Human_Control,disease,G3,0.22710715187362496
+Recursive,chemical,G3,0.12624781135593605
+Recursive,disease,G3,0.1383438375039607
