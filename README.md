@@ -18,6 +18,19 @@ The configured `init_mode: previous_adapter` means each generation starts from
 the previous generation's adapter. Do not combine results from a run with a
 different initialization mode or decoding configuration in the same analysis.
 
+## Dataset Sources
+
+The experiments use the PubMedQA dataset:
+`qiaojin/PubMedQA`
+
+Updated dataset artifacts:
+
+- Qwen2.5-0.5B: https://huggingface.co/datasets/chrislimbe/pubmedqa-recursive-llm-degradation-qwen2.5-0.5b
+- Qwen2.5-3B: https://huggingface.co/datasets/chrislimbe/pubmedqa-recursive-llm-degradation-qwen2.5-3b
+
+This repository contains generated/derived research artifacts and does not
+redistribute the original PubMedQA dataset in its entirety.
+
 ## Run the generation pipeline
 
 Create and activate a Python environment, install the dependencies from
