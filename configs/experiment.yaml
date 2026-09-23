@@ -4,11 +4,11 @@ ner_model: HFpf/pubmedbert-bc5cdr-ner
 embedding_model: sentence-transformers/all-MiniLM-L6-v2
 output_root: results
 data_root: data
-seeds: [42, 123, 456]
+seeds: [42, 123]
 generations: 3                  # produces G0, G1, G2, G3
 g0_base_size: 5000
 gold_eval_size: 1000
-anchor_ratio: 0.10
+anchor_ratio: 0
 init_mode: previous_adapter     # previous_adapter | base
 quantization:                  # CUDA only; CPU/MPS use non-quantized weights
   load_in_4bit: true
@@ -27,7 +27,7 @@ training:
   lora_dropout: 0.05
   target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
 generation:
-  batch_size: 28
+  batch_size: 96
   max_new_tokens: 256
   do_sample: false
   temperature: null

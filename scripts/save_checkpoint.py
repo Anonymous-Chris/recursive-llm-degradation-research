@@ -114,7 +114,7 @@ def main() -> None:
         "--seed",
         required=True,
         type=int,
-        choices=[42, 123, 456],
+        choices=[42, 123],
     )
 
     parser.add_argument(

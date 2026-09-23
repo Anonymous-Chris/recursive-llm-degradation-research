@@ -1,79 +1,73 @@
 # Recursive biomedical QA study
 
-This is a reproducible implementation of the proposed PubMedQA study.  It does
-not include model outputs: those must be generated on the intended GPU so that
-all reported results come from one documented run.
+This repository contains a PubMedQA recursive synthetic-data study, its model
+generation pipeline, and Colab notebooks for evaluating saved runs. The current
+configuration targets Qwen2.5-3B. Evaluation notebooks and saved analysis
+artifacts are organized under `notebooks/evaluation_qwen2.5-0.5b/` and
+`notebooks/evaluation_qwen2.5-3b/`.
 
-## Experimental contract
+## Study design
 
-* `PQA-U`: 500 examples for the original human training set.
-* `PQA-L`: a fixed 1,000-example, expert-labelled evaluation set; it is never
-  used as training data.
-* Main condition: human -> G0 -> synthetic -> G1 -> synthetic -> G2 ->
-  synthetic -> G3.
-* Controls: repeated human-data fine-tuning and a 10% retained-human anchor.
-* Every model in a chain is evaluated on exactly the same saved gold CSV.
+- `PQA-U`: 5,000 examples for the initial human training pool
+- `PQA-L`: 1,000 labeled examples reserved for held-out evaluation
+- Four generations, G0 through G3, with cumulative adapter fine-tuning
+- Seeds 42 and 123, as configured in `configs/experiment.yaml`
+- Generation settings and model parameters are recorded in that config
 
-The default `init_mode: previous_adapter` is **cumulative fine-tuning**:
-G1 starts from G0, G2 from G1, and so on.  This makes the word "recursive"
-refer to both the data and training trajectory.  Change it to `base` only if
-the preregistered design is instead to re-train each generation from the same
-base model; never mix the two designs in one table.
+The configured `init_mode: previous_adapter` means each generation starts from
+the previous generation's adapter. Do not combine results from a run with a
+different initialization mode or decoding configuration in the same analysis.
 
-## Run order
+## Run the generation pipeline
 
-From this directory, create an environment with the packages in
-`requirements.txt`, log in to Hugging Face if necessary, then run:
+Create and activate a Python environment, install the dependencies from
+`requirements.txt`, and authenticate with Hugging Face if required by the model
+or dataset. From the repository root:
 
-```powershell
+```bash
 python -m biomed_recursive.prepare_data --config configs/experiment.yaml
 python -m biomed_recursive.run_chain --config configs/experiment.yaml --condition recursive --seed 42
 python -m biomed_recursive.run_chain --config configs/experiment.yaml --condition human_control --seed 42
 python -m biomed_recursive.run_chain --config configs/experiment.yaml --condition anchor_10 --seed 42
-python -m biomed_recursive.evaluate --config configs/experiment.yaml --run-dir results/recursive/seed_42
-python -m biomed_recursive.statistics --results-dir results --metrics entity_disease_f1,entity_chemical_f1,rougeL,bertscore_f1,prediction_distinct_2,repetition_3gram,answer_tokens,base_conditional_ppl
 ```
 
-Repeat the three chains and evaluation for seeds `123` and `456`.  The
-convenience driver below launches the declared condition/seed matrix after the
-gold split has been prepared:
+The configured matrix can be launched with:
 
-```powershell
+```bash
 python scripts/run_matrix.py --config configs/experiment.yaml
 ```
 
-`run_chain` writes adapters, synthetic data, prediction CSVs, generation
-diagnostics and an immutable `run_metadata.json`. `evaluate` writes both
-per-example measurements (needed for paired statistics) and a summary table.
+Generated runs are written under `results/`. Check a run's expected files and
+provenance with:
 
-## Outputs and checks
-
-Before interpreting results, run:
-
-```powershell
+```bash
 python scripts/verify_run.py --run-dir results/recursive/seed_42
 ```
 
-It rejects a run unless every G0--G3 prediction file has exactly the saved
-gold pubids in identical order, each synthetic set has the configured size,
-and recursive training inputs have the expected provenance.  Do not compare
-old pilot outputs generated with different decoding limits/settings.
+`run_chain` saves the model adapters, generated data, predictions, and run
+metadata. This checkout does not include the standalone `biomed_recursive.evaluate`,
+`biomed_recursive.statistics`, or `biomed_recursive.metrics` modules. Use the
+evaluation notebooks described below to analyze exported run CSVs.
 
-### Metric interpretation
+## Evaluate and analyze results
 
-* Entity mismatch is reported as **reference-based entity mismatch**, never a
-  hallucination rate. Context-supported and unsupported entity rates are
-  reported separately.
-* `distinct_1/2` are corpus-level diversity metrics for the synthetic data;
-  3-gram repetition is an within-answer metric.
-* Conditional perplexity is descriptive. Lower PPL is not evidence of better
-  medical quality. Both a frozen base model and a frozen G0 evaluator are
-  supported.
-* Decision preservation is deliberately optional. Its mapper is a documented
-  heuristic and must not be reported as clinician adjudication.
+The combined evaluation notebooks are designed for Google Colab. Upload the
+prediction and generation CSV files from the relevant runs, then run the
+matching notebook from top to bottom:
 
-## Paper-safe scope
+- `notebooks/evaluation_qwen2.5-0.5b/combined_evaluation_seed42_0.5b_colab.ipynb`
+- `notebooks/evaluation_qwen2.5-0.5b/combined_evaluation_seed123_0.5b_colab.ipynb`
+- `notebooks/evaluation_qwen2.5-3b/combined_evaluation_seed42_3b_colab.ipynb`
+- `notebooks/evaluation_qwen2.5-3b/combined_evaluation_seed123_3b_colab.ipynb`
 
-The supported conclusion is limited to observed changes under the documented
-PubMedQA/model/decoding setup. This code cannot establish universal model
-collapse or medical factuality without external clinical adjudication.
+The `cross_condition_cross_seed_master.ipynb` notebooks combine results across
+conditions and seeds. Their `final_results/` directories contain the currently
+saved tables, plots, and (for the 0.5B analysis) a data archive. See the 3B
+folder's README for its Colab upload and export workflow.
+
+## Interpretation limits
+
+Entity overlap measures agreement with reference answers; it is not a clinical
+hallucination rate. Perplexity and text similarity are descriptive metrics, not
+measures of medical safety or correctness. Claims should be limited to the
+models, data, and generation settings represented in the analyzed runs.
