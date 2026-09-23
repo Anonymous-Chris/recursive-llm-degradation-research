@@ -31,6 +31,39 @@ Updated dataset artifacts:
 This repository contains generated/derived research artifacts and does not
 redistribute the original PubMedQA dataset in its entirety.
 
+## Load the datasets
+```
+from datasets import load_dataset
+
+REPO = "chrislimbe/pubmedqa-recursive-llm-degradation-qwen2.5-3b"
+
+configs = [
+    "seed42_recursive_synthetic_3b",
+    "seed42_recursive_predictions_3b",
+    "seed123_recursive_synthetic_3b",
+    "seed123_recursive_predictions_3b",
+    "seed42_human_control_synthetic_3b",
+    "seed42_human_control_predictions_3b",
+    "seed123_human_control_synthetic_3b",
+    "seed123_human_control_predictions_3b",
+]
+
+datasets_3b = {}
+
+for config in configs:
+    datasets_3b[config] = load_dataset(REPO, config)
+```
+```
+for name, dataset in datasets_3b.items():
+    print(f"\n{name}")
+
+    split_name = list(dataset.keys())[0]
+    df = dataset[split_name].to_pandas()
+
+    print(f"Rows: {len(df)}")
+    display(df.head(10))
+```
+
 ## Run the generation pipeline
 
 Create and activate a Python environment, install the dependencies from
