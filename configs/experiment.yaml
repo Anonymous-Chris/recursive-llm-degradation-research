@@ -1,7 +1,7 @@
 study_name: pubmedqa_recursive_biomedical_qa
 model_name: Qwen/Qwen2.5-3B
 ner_model: HFpf/pubmedbert-bc5cdr-ner
-embedding_model: sentence-transformers/all-MiniLM-L6-v2
+embedding_model: sentence-transformers/all-mpnet-base-v2
 output_root: results
 data_root: data
 seeds: [42, 123]
