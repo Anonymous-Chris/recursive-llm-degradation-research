@@ -42,5 +42,4 @@ evaluation:
   max_length: 1024
   compute_bertscore: true
   compute_embedding_cosine: true
-  compute_frozen_g0_ppl: true
   decision_mapper: none         # none | terminal_keyword
