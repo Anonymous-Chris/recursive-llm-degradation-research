@@ -263,3 +263,17 @@ generation settings represented in the analyzed runs.
 The study does not establish universal model collapse or a general scaling law.
 Differences between the 0.5B and 3B configurations should be interpreted as
 observations within the tested configurations.
+
+## License
+
+This project is released under the MIT License. See the LICENSE file for details.
+
+## Third-Party Resources
+
+This project uses third-party libraries, models, and datasets that are
+subject to their respective licenses and terms.
+- Qwen2.5: subject to the applicable Qwen model license.
+- PubMedQA: subject to the original dataset license and terms.
+- Hugging Face Transformers: Apache 2.0.
+- PEFT: Apache 2.0.
+- PyTorch: BSD-style license.
